@@ -52,6 +52,11 @@ def cmd_start(message):
         "Hello! I'm your AI assistant. Send me a message to get started.\n\nUse /help to see available commands.",
     )
 
+@bot.message_handler(commands=["joke"], func=is_allowed)
+def cmd_joke(message):
+    reply = ask_ai(message.from_user.id, "Tell one short, dark but energetic joke about friendship.")
+    bot.send_message(message.chat.id, reply)
+
 
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
