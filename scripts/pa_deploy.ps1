@@ -262,6 +262,58 @@ if ((Test-PaPath "$ProjectDir/.git") -and (Test-PaPath "$VenvDir/bin/python")) {
         "$VenvDir/bin/pip install --upgrade pip && $VenvDir/bin/pip install -r $ProjectDir/requirements.txt" 300
 }
 
+# ---- 4b. Ensure PA recognizes the virtualenv ---------------------------------
+# PA's webapp-config PATCH (step 7) validates virtualenv_path by checking for
+# bin/activate_this.py — a legacy artifact of the third-party `virtualenv`
+# package. We create the venv with the stdlib `python -m venv` (no extra
+# dependency needed), which never writes that file, so the PATCH fails with
+# "Warning: No virtualenv detected at this path." Upload the standard
+# activate_this.py content directly via the Files API — no console needed, so
+# this also self-heals venvs created before this fix.
+if (-not (Test-PaPath "$VenvDir/bin/activate_this.py")) {
+    Write-Info "Adding bin/activate_this.py (PA virtualenv marker)..."
+    $activateThisPy = @'
+"""Activate virtualenv for current interpreter.
+
+Use exec(open(this_file).read(), {'__file__': this_file}).
+
+This can be used when you must use an existing Python interpreter, not the
+virtualenv bin/python.
+"""
+import os
+import site
+import sys
+
+try:
+    abs_file = os.path.abspath(__file__)
+except NameError:
+    raise AssertionError("You must use exec(open(this_file).read(), {'__file__': this_file}))")
+
+bin_dir = os.path.dirname(abs_file)
+base = bin_dir[: -len("bin") - 1]  # strip away the bin part from the __file__, plus the path separator
+
+sys.path[0:0] = [bin_dir]
+os.environ["VIRTUAL_ENV"] = base  # virtual env is right above bin directory
+
+if sys.platform == "win32":
+    site_packages = os.path.join(base, "Lib", "site-packages")
+else:
+    site_packages = os.path.join(base, "lib", "python%s" % sys.version[:3], "site-packages")
+
+prev_length = len(sys.path)
+site.addsitedir(site_packages)
+sys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]
+
+sys.real_prefix = sys.prefix
+sys.prefix = base
+'@
+    $tmpActivate = Join-Path ([IO.Path]::GetTempPath()) ("pa_activate_" + [Guid]::NewGuid().ToString('N') + ".py")
+    [IO.File]::WriteAllText($tmpActivate, (($activateThisPy -replace "`r`n", "`n").TrimEnd() + "`n"), (New-Object Text.UTF8Encoding($false)))
+    $ua = Invoke-Pa -Method Post -Path "/files/path$VenvDir/bin/activate_this.py" -Form @{ content = Get-Item -LiteralPath $tmpActivate }
+    Remove-Item -LiteralPath $tmpActivate -ErrorAction SilentlyContinue
+    if ($ua.Code -ne 200 -and $ua.Code -ne 201) { Die "activate_this.py upload failed (HTTP $($ua.Code))." }
+}
+
 # ---- 5. Upload .env to PA ---------------------------------------------------
 Write-Info "Generating PA-side .env..."
 $envLines = [System.Collections.Generic.List[string]]::new()

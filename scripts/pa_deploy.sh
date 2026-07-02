@@ -21,6 +21,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# On Git-for-Windows/MSYS, argv passed to *native* (non-MSYS) executables like
+# curl and python3 gets heuristically rewritten: any argument that looks like
+# a POSIX path (standalone, or embedded after a `key=`) has that portion
+# silently prefixed with the MSYS install root — e.g. `/home/x/bot` becomes
+# `C:/.../git/home/x/bot` — because the same pattern is how Docker/etc. pass
+# real host paths. Every PA-side path this script hands to curl or python3 is
+# a *remote* path, never a local one meant for translation, so exclude the
+# two --data-urlencode keys that carry one plus the literal `/home/` prefix
+# (for the bare-argv case when verifying the PATCH response). A blanket
+# MSYS_NO_PATHCONV=1 would be simpler but also disables MSYS's /dev/null ->
+# NUL mapping, breaking every `-o /dev/null` call elsewhere in this script.
+# (No effect on real Linux/macOS — this var is simply ignored there.)
+export MSYS2_ARG_CONV_EXCL="source_directory=;virtualenv_path=;/home/"
+
 if [ ! -f .env ]; then
   echo "ERROR: .env not found in repo root. Copy .env.example to .env and fill it in first." >&2
   exit 1
@@ -72,6 +86,21 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 is required (used for JSON parsing)." >&2
   exit 1
 fi
+
+# On Git-for-Windows/MSYS, `curl` is usually the native mingw64 build, which
+# can't read MSYS-style POSIX paths (e.g. /tmp/foo) when they're embedded in a
+# composite argument like `-F content=@/tmp/foo;filename=.env` — MSYS only
+# auto-translates a standalone path argument, not one glued into a bigger
+# string. It fails with "curl: (26) Failed to open/read local data from
+# file/application". Route paths through cygpath -w before handing them to
+# curl -F when cygpath is available (i.e. on Windows); no-op elsewhere.
+curl_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
 
 REPO_URL="$(git remote get-url origin 2>/dev/null || true)"
 if [ -z "$REPO_URL" ]; then
@@ -263,6 +292,63 @@ run_remote "pip install requirements" \
 
 fi  # end "skip console setup when clone + venv already present" guard
 
+# --- 4b. Ensure PA recognizes the virtualenv ---------------------------------
+# PA's webapp-config PATCH (step 7) validates virtualenv_path by checking for
+# bin/activate_this.py — a legacy artifact of the third-party `virtualenv`
+# package. We create the venv with the stdlib `python -m venv` (no extra
+# dependency needed), which never writes that file, so the PATCH fails with
+# "Warning: No virtualenv detected at this path." Upload the standard
+# activate_this.py content directly via the Files API — no console needed, so
+# this also self-heals venvs created before this fix, even via the fast
+# headless "already present" skip path above.
+if ! pa_path_exists "$VENV_DIR/bin/activate_this.py"; then
+  echo "==> Adding bin/activate_this.py (PA virtualenv marker)..."
+  TMP_ACTIVATE="$(mktemp -t pa_activate.XXXXXX)"
+  cat > "$TMP_ACTIVATE" <<'PYEOF'
+"""Activate virtualenv for current interpreter.
+
+Use exec(open(this_file).read(), {'__file__': this_file}).
+
+This can be used when you must use an existing Python interpreter, not the
+virtualenv bin/python.
+"""
+import os
+import site
+import sys
+
+try:
+    abs_file = os.path.abspath(__file__)
+except NameError:
+    raise AssertionError("You must use exec(open(this_file).read(), {'__file__': this_file}))")
+
+bin_dir = os.path.dirname(abs_file)
+base = bin_dir[: -len("bin") - 1]  # strip away the bin part from the __file__, plus the path separator
+
+sys.path[0:0] = [bin_dir]
+os.environ["VIRTUAL_ENV"] = base  # virtual env is right above bin directory
+
+if sys.platform == "win32":
+    site_packages = os.path.join(base, "Lib", "site-packages")
+else:
+    site_packages = os.path.join(base, "lib", "python%s" % sys.version[:3], "site-packages")
+
+prev_length = len(sys.path)
+site.addsitedir(site_packages)
+sys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]
+
+sys.real_prefix = sys.prefix
+sys.prefix = base
+PYEOF
+  activate_status=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "$AUTH_HEADER" \
+    -F "content=@$(curl_path "$TMP_ACTIVATE");filename=activate_this.py" \
+    "$PA_API/files/path${VENV_DIR}/bin/activate_this.py")
+  rm -f "$TMP_ACTIVATE"
+  case "$activate_status" in
+    200|201) ;;
+    *) echo "ERROR: activate_this.py upload failed (HTTP $activate_status)." >&2; exit 1 ;;
+  esac
+fi
+
 # --- 5. Upload .env to PA ----------------------------------------------------
 echo "==> Generating PA-side .env..."
 TMP_ENV="$(mktemp -t pa_env.XXXXXX)"
@@ -287,7 +373,7 @@ emit_if_set DEPLOY_SECRET
 
 echo "==> Uploading .env to $PROJECT_DIR/.env ..."
 upload_status=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "$AUTH_HEADER" \
-  -F "content=@$TMP_ENV;filename=.env" \
+  -F "content=@$(curl_path "$TMP_ENV");filename=.env" \
   "$PA_API/files/path${PROJECT_DIR}/.env")
 case "$upload_status" in
   200|201) ;;
@@ -309,7 +395,7 @@ EOF
 
 echo "==> Uploading WSGI file to $WSGI_FILE ..."
 wsgi_status=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "$AUTH_HEADER" \
-  -F "content=@$TMP_WSGI;filename=wsgi.py" \
+  -F "content=@$(curl_path "$TMP_WSGI");filename=wsgi.py" \
   "$PA_API/files/path${WSGI_FILE}")
 case "$wsgi_status" in
   200|201) ;;
