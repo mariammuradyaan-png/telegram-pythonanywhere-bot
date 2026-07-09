@@ -115,6 +115,46 @@ def test_handle_message_mention_only_skipped():
         mock_ask.assert_not_called()
 
 
+# ── /joke ─────────────────────────────────────────────────────────────────────
+
+
+def test_cmd_joke_routes_through_ask_ai():
+    """/joke should generate via ask_ai (so the persona system prompt is
+    applied) and reply through send_reply."""
+    with (
+        patch("bot.handlers.ask_ai", return_value="haha here's one ⚡") as mock_ask,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.bot"),
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_joke
+
+        msg = make_message(text="/joke")
+        cmd_joke(msg)
+        assert mock_ask.call_args[0][0] == 123
+        mock_send.assert_called_once_with(msg, "haha here's one ⚡")
+        mock_keep.assert_called_once_with(456)
+
+
+def test_cmd_joke_sends_generic_error_on_failure():
+    """A failed generation must not leak the exception to the user."""
+    with (
+        patch("bot.handlers.ask_ai", side_effect=Exception("API key invalid")),
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_joke
+
+        cmd_joke(make_message(text="/joke"))
+        error_msg = mock_bot.send_message.call_args[0][1]
+        assert "Something went wrong" in error_msg
+        assert "API key" not in error_msg
+
+
 # ── /about ────────────────────────────────────────────────────────────────────
 
 

@@ -54,8 +54,19 @@ def cmd_start(message):
 
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
-    reply = ask_ai(message.from_user.id, "Tell one short, dark but energetic joke about friendship.")
-    bot.send_message(message.chat.id, reply)
+    # Routes through ask_ai so the joke comes out in Mariam's voice (the
+    # system prompt is applied) and lands in her conversation memory like
+    # any other turn. Same keep_typing / send_reply / error handling as
+    # handle_message so a slow or failed generation behaves consistently.
+    prompt = "Tell me a joke — something in your voice, short and playful."
+    try:
+        with keep_typing(message.chat.id):
+            reply = ask_ai(message.from_user.id, prompt)
+        send_reply(message, reply)
+        _log(message, "out", reply)
+    except Exception as e:
+        print(f"Error in cmd_joke: {e}")
+        bot.send_message(message.chat.id, "Something went wrong. Please try again.")
 
 
 @bot.message_handler(commands=["help"], func=is_allowed)
@@ -63,6 +74,7 @@ def cmd_help(message):
     lines = [
         "/start — welcome message",
         "/help  — show this message",
+        "/joke  — hear a joke in my voice",
         "/reset — clear conversation history",
         "/about — about this bot",
         "/sha   — show the live git commit SHA",
