@@ -155,6 +155,55 @@ def test_cmd_joke_sends_generic_error_on_failure():
         assert "API key" not in error_msg
 
 
+# ── /imagine ──────────────────────────────────────────────────────────────────
+
+
+def test_cmd_imagine_sends_photo_with_built_url():
+    with (
+        patch("bot.handlers.build_image_url", return_value="http://img/x") as mock_build,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_imagine
+
+        msg = make_message(text="/imagine a rose")
+        msg.message_id = 7
+        cmd_imagine(msg)
+        mock_build.assert_called_once_with("a rose", seed=7)
+        mock_bot.send_photo.assert_called_once()
+        args, kwargs = mock_bot.send_photo.call_args
+        assert args[0] == 456  # chat id
+        assert args[1] == "http://img/x"
+        assert "a rose" in kwargs["caption"]
+
+
+def test_cmd_imagine_prompts_when_no_description():
+    with (
+        patch("bot.handlers.build_image_url") as mock_build,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_imagine
+
+        cmd_imagine(make_message(text="/imagine"))
+        mock_build.assert_not_called()
+        mock_bot.send_photo.assert_not_called()
+        assert "imagine" in mock_bot.send_message.call_args[0][1].lower()
+
+
+def test_cmd_imagine_falls_back_to_link_on_send_failure():
+    """If Telegram can't fetch/generate the image, the user still gets the
+    raw link instead of a silent failure."""
+    with (
+        patch("bot.handlers.build_image_url", return_value="http://img/x"),
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        mock_bot.send_photo.side_effect = Exception("failed to get HTTP URL content")
+        from bot.handlers import cmd_imagine
+
+        cmd_imagine(make_message(text="/imagine a rose"))
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "http://img/x" in sent
+
+
 # ── /about ────────────────────────────────────────────────────────────────────
 
 

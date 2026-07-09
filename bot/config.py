@@ -99,6 +99,24 @@ SQLITE_PATH = os.environ.get("SQLITE_PATH", "").strip()
 # that is the documented deployment target. Override to suit your host.
 HOSTING_LABEL = os.environ.get("HOSTING_LABEL", "PythonAnywhere").strip()
 
+# /imagine — text-to-image via Pollinations (https://pollinations.ai).
+# No API key required. The bot only *builds* an image URL and hands it to
+# Telegram's sendPhoto; Telegram's own servers fetch the image, so PA's
+# free-tier outbound whitelist does not apply here. IMAGINE_STYLE is
+# appended to every prompt so results always land in a romantic look —
+# override it to change the house style.
+IMAGINE_BASE_URL = os.environ.get(
+    "IMAGINE_BASE_URL", "https://image.pollinations.ai/prompt"
+).strip()
+IMAGINE_MODEL = os.environ.get("IMAGINE_MODEL", "flux").strip()
+IMAGINE_WIDTH = int(os.environ.get("IMAGINE_WIDTH", "1024"))
+IMAGINE_HEIGHT = int(os.environ.get("IMAGINE_HEIGHT", "1024"))
+IMAGINE_STYLE = os.environ.get(
+    "IMAGINE_STYLE",
+    "romantic style, soft warm lighting, dreamy and tender atmosphere, "
+    "gentle bokeh, pastel tones, film photography aesthetic",
+).strip()
+
 # Auto-deploy webhook secret. When set, /api/deploy accepts requests
 # that present this value in the X-Deploy-Secret header and runs
 # `git pull` + WSGI reload. When unset, /api/deploy returns 403 — the

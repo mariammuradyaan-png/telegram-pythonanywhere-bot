@@ -4,6 +4,7 @@ from bot.clients import bot, BOT_INFO, store
 from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
 from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
+from bot.imagine import build_image_url
 from bot.history import clear_history
 from bot.preferences import get_provider, set_provider
 from bot.rate_limit import is_rate_limited
@@ -69,12 +70,47 @@ def cmd_joke(message):
         bot.send_message(message.chat.id, "Something went wrong. Please try again.")
 
 
+@bot.message_handler(commands=["imagine"], func=is_allowed)
+def cmd_imagine(message):
+    # Turn a description into a romantic-style image. We only build a
+    # Pollinations URL and let Telegram fetch it (sendPhoto with a URL) —
+    # so no outbound call is made from PA and no image API key is needed.
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(
+            message.chat.id,
+            "Tell me what to imagine 💖 — like:\n"
+            "/imagine two cups of coffee by a rainy window",
+        )
+        return
+    description = parts[1].strip()
+    _log(message, "in", f"/imagine {description}")
+    seed = getattr(message, "message_id", None)
+    url = build_image_url(description, seed=seed)
+    try:
+        # upload_photo shows the "sending photo…" status while Telegram
+        # pulls the image (Pollinations can take 10-30s to generate).
+        bot.send_chat_action(message.chat.id, "upload_photo")
+        bot.send_photo(message.chat.id, url, caption=f"✨ {description}")
+        _log(message, "out", f"[image] {url}")
+    except Exception as e:
+        # Telegram couldn't fetch/generate in time — fall back to the raw
+        # link so the user can still open it in a browser.
+        print(f"Error in cmd_imagine: {e}")
+        bot.send_message(
+            message.chat.id,
+            f"Couldn't send the image just now 💔 but here's the link:\n{url}",
+        )
+        _log(message, "out", f"[image error] {e}")
+
+
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
     lines = [
         "/start — welcome message",
         "/help  — show this message",
         "/joke  — hear a joke in my voice",
+        "/imagine <description> — create a romantic image",
         "/reset — clear conversation history",
         "/about — about this bot",
         "/sha   — show the live git commit SHA",
