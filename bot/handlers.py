@@ -6,6 +6,7 @@ from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.imagine import build_image_url
 from bot.history import clear_history
+from bot.motivation import subscribe, unsubscribe
 from bot.preferences import get_provider, set_provider
 from bot.rate_limit import is_rate_limited
 
@@ -46,12 +47,34 @@ def _log(message, direction: str, text: str) -> None:
     print(f"[{ts}] {sender} → {receiver}: {snippet}", flush=True)
 
 
+def _command_lines():
+    """The command menu, shared by /start and /help so they never drift.
+
+    /model is only listed when a HF space is configured (that's the only
+    condition under which the command is registered)."""
+    lines = [
+        "/help — show this message",
+        "/joke — hear a joke in my voice",
+        "/imagine <description> — I'll make you a romantic image",
+        "/subscribe — get a good-morning message from me each day ☀️",
+        "/unsubscribe — stop the daily messages",
+        "/reset — clear our conversation and start fresh",
+        "/about — a little about me",
+        "/sha — show the live git commit SHA",
+    ]
+    if HF_SPACE_ID:
+        lines.append("/model — switch AI provider")
+    return lines
+
+
 @bot.message_handler(commands=["start"], func=is_allowed)
 def cmd_start(message):
-    bot.send_message(
-        message.chat.id,
-        "Hello! I'm your AI assistant. Send me a message to get started.\n\nUse /help to see available commands.",
+    intro = (
+        "Hi, I'm Mariam 💖 So happy you're here.\n"
+        "Just talk to me like you'd talk to a friend — tell me about your day, "
+        "or try one of these whenever you like:\n\n" + "\n".join(_command_lines())
     )
+    bot.send_message(message.chat.id, intro)
 
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
@@ -106,18 +129,48 @@ def cmd_imagine(message):
 
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
-    lines = [
-        "/start — welcome message",
-        "/help  — show this message",
-        "/joke  — hear a joke in my voice",
-        "/imagine <description> — create a romantic image",
-        "/reset — clear conversation history",
-        "/about — about this bot",
-        "/sha   — show the live git commit SHA",
-    ]
-    if HF_SPACE_ID:
-        lines.append("/model — switch AI provider")
-    bot.send_message(message.chat.id, "\n".join(lines))
+    bot.send_message(message.chat.id, "\n".join(_command_lines()))
+
+
+@bot.message_handler(commands=["subscribe"], func=is_allowed)
+def cmd_subscribe(message):
+    # Opting in needs the store — that's where the subscriber list lives.
+    if store is None:
+        bot.send_message(
+            message.chat.id,
+            "I can't set that up right now — daily messages need storage "
+            "configured on my end 💔",
+        )
+        return
+    if subscribe(message.from_user.id, message.chat.id):
+        bot.send_message(
+            message.chat.id,
+            "You're in ⭐ I'll send you a little good-morning message every "
+            "day. Say /unsubscribe anytime to stop.",
+        )
+    else:
+        bot.send_message(
+            message.chat.id, "Couldn't save that just now 💔 try again in a bit."
+        )
+
+
+@bot.message_handler(commands=["unsubscribe"], func=is_allowed)
+def cmd_unsubscribe(message):
+    if store is None:
+        bot.send_message(
+            message.chat.id, "Nothing to stop — daily messages aren't set up here."
+        )
+        return
+    if unsubscribe(message.from_user.id):
+        bot.send_message(
+            message.chat.id,
+            "Done — no more morning messages 💖 I'm still right here whenever "
+            "you want to talk.",
+        )
+    else:
+        bot.send_message(
+            message.chat.id, "Couldn't update that just now 💔 try again in a bit."
+        )
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)

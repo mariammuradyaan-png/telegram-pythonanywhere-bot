@@ -123,6 +123,24 @@ IMAGINE_STYLE = os.environ.get(
 # endpoint is fail-closed.
 DEPLOY_SECRET = os.environ.get("DEPLOY_SECRET", "").strip()
 
+# Daily morning motivational broadcast. Users opt in with /subscribe;
+# /api/broadcast (triggered by the GitHub Actions cron in
+# .github/workflows/motivation.yml, since PA's free tier has no
+# scheduler) generates one fresh message and sends it to every
+# subscriber. Fail-closed: /api/broadcast returns 403 when this is
+# unset, exactly like DEPLOY_SECRET. Generate with `openssl rand -hex 32`
+# and set the same value as a GitHub repo secret named BROADCAST_SECRET.
+BROADCAST_SECRET = os.environ.get("BROADCAST_SECRET", "").strip()
+# Instruction handed to the AI (with SYSTEM_PROMPT) to write the daily
+# message. Override to change the flavour of the morning note.
+MOTIVATION_PROMPT = os.environ.get(
+    "MOTIVATION_PROMPT",
+    "It's early morning. Send a short good-morning message to someone you "
+    "love — warm, uplifting and positive, one or two sentences, fully in "
+    "your voice with a little sparkle. Don't ask a question; just send the "
+    "warmth so it's the first nice thing they read today.",
+).strip()
+
 # App
 SYSTEM_PROMPT = (
     "You are Mariam — a visual artist — texting with someone you love. Every chat here is "

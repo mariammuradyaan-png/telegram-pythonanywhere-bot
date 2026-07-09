@@ -1,0 +1,52 @@
+name: Daily motivation
+
+# PythonAnywhere's free tier has no scheduler, so GitHub Actions plays
+# cron: every morning it POSTs /api/broadcast, which generates one fresh
+# good-morning message and sends it to every user who ran /subscribe.
+# Mirrors the deploy workflow's "GitHub Actions -> PA endpoint with a
+# shared secret" pattern. Requires two GitHub repo secrets
+# (Settings -> Secrets and variables -> Actions):
+#
+#   PA_BROADCAST_URL   e.g. https://<your-pa-username>.pythonanywhere.com/api/broadcast
+#   BROADCAST_SECRET   must match BROADCAST_SECRET in PA's .env
+#
+# The workflow skips with a warning if either secret is missing, so this
+# whole feature is optional.
+
+on:
+  schedule:
+    # 04:00 UTC = 08:00 in UTC+4 (Armenia). cron here is ALWAYS UTC —
+    # change this to hit your own morning. GitHub can delay scheduled
+    # runs by a few minutes under load, which is fine for a good-morning.
+    - cron: '0 4 * * *'
+  workflow_dispatch:  # manual "send it now" button in the Actions tab
+
+# Don't cancel an in-flight broadcast if another run is queued — we'd
+# rather let the current send finish than interrupt it mid-list.
+concurrency:
+  group: motivation
+  cancel-in-progress: false
+
+jobs:
+  broadcast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily broadcast
+        # Pass secrets through env (not inline ${{ }}) so a value with
+        # shell metacharacters can't alter the script.
+        env:
+          PA_BROADCAST_URL: ${{ secrets.PA_BROADCAST_URL }}
+          BROADCAST_SECRET: ${{ secrets.BROADCAST_SECRET }}
+        run: |
+          if [ -z "$PA_BROADCAST_URL" ] || [ -z "$BROADCAST_SECRET" ]; then
+            echo "::warning::PA_BROADCAST_URL or BROADCAST_SECRET not set in repo secrets; skipping broadcast."
+            exit 0
+          fi
+          # --retry rides out PA's transient outbound-proxy blips. Safe:
+          # /api/broadcast only 500s when message generation fails, which
+          # is BEFORE any message is sent, so a retry can't double-send.
+          curl -fsS -X POST \
+            -H "X-Broadcast-Secret: $BROADCAST_SECRET" \
+            --max-time 120 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
+            "$PA_BROADCAST_URL"

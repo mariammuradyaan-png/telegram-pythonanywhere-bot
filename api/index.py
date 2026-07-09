@@ -235,6 +235,44 @@ def _pa_wsgi_path() -> str:
     return ""
 
 
+@app.route("/api/broadcast", methods=["POST"])
+def broadcast():
+    """Send the daily morning motivational message to every subscriber.
+
+    PA's free tier has no scheduler, so this is triggered by the GitHub
+    Actions cron in .github/workflows/motivation.yml. Verifies an
+    X-Broadcast-Secret header against BROADCAST_SECRET and is fail-closed
+    (403 when the secret is unset), exactly like /api/deploy — so a
+    misconfigured deploy can't let anyone spam every subscriber.
+    """
+    from bot.config import BROADCAST_SECRET
+
+    if not BROADCAST_SECRET:
+        return "Broadcast endpoint disabled (BROADCAST_SECRET unset)", 403
+
+    provided = request.headers.get("X-Broadcast-Secret", "")
+    if not hmac.compare_digest(provided, BROADCAST_SECRET):
+        return "Forbidden", 403
+
+    # Authenticated — pull the heavyweight modules now (importing
+    # bot.motivation wires up the Telegram bot + store + AI clients).
+    from bot.motivation import broadcast_motivation
+
+    try:
+        result = broadcast_motivation()
+    except Exception as e:
+        # A generation failure happens before any send, so nothing went
+        # out — the cron's retry is safe.
+        print(f"Broadcast failed: {e}")
+        return "Broadcast failed (see server log for details)", 500
+
+    body = (
+        f"OK sent={result['sent']} failed={result['failed']} "
+        f"removed={result['removed']} total={result['total']}"
+    )
+    return body + "\n", 200
+
+
 @app.route("/api/deploy", methods=["POST"])
 def deploy():
     """Auto-deploy webhook. Converges the checkout to origin's tip and

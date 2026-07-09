@@ -155,6 +155,97 @@ def test_cmd_joke_sends_generic_error_on_failure():
         assert "API key" not in error_msg
 
 
+# ── /start & /help ─────────────────────────────────────────────────────────────
+
+
+def test_cmd_start_introduces_and_lists_commands():
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.HF_SPACE_ID", ""),
+    ):
+        from bot.handlers import cmd_start
+
+        cmd_start(make_message())
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "Mariam" in sent
+        for cmd in ("/joke", "/imagine", "/subscribe", "/reset", "/about"):
+            assert cmd in sent
+
+
+def test_cmd_help_lists_model_only_when_hf_enabled():
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.HF_SPACE_ID", ""),
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message())
+        assert "/model" not in mock_bot.send_message.call_args[0][1]
+
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.HF_SPACE_ID", "some/space"),
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message())
+        assert "/model" in mock_bot.send_message.call_args[0][1]
+
+
+# ── /subscribe & /unsubscribe ───────────────────────────────────────────────────
+
+
+def test_cmd_subscribe_opts_user_in():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.handlers.subscribe", return_value=True) as mock_sub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_subscribe
+
+        cmd_subscribe(make_message(text="/subscribe"))
+        mock_sub.assert_called_once_with(123, 456)  # user_id, chat_id
+        assert "day" in mock_bot.send_message.call_args[0][1].lower()
+
+
+def test_cmd_subscribe_explains_when_stateless():
+    with (
+        patch("bot.handlers.store", None),
+        patch("bot.handlers.subscribe") as mock_sub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_subscribe
+
+        cmd_subscribe(make_message(text="/subscribe"))
+        mock_sub.assert_not_called()
+        mock_bot.send_message.assert_called_once()
+
+
+def test_cmd_subscribe_reports_write_failure():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.handlers.subscribe", return_value=False),
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_subscribe
+
+        cmd_subscribe(make_message(text="/subscribe"))
+        assert "try again" in mock_bot.send_message.call_args[0][1].lower()
+
+
+def test_cmd_unsubscribe_opts_user_out():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.handlers.unsubscribe", return_value=True) as mock_unsub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_unsubscribe
+
+        cmd_unsubscribe(make_message(text="/unsubscribe"))
+        mock_unsub.assert_called_once_with(123)
+        assert mock_bot.send_message.called
+
+
 # ── /imagine ──────────────────────────────────────────────────────────────────
 
 
