@@ -1,0 +1,47 @@
+name: Daily horoscope
+
+# PythonAnywhere's free tier has no scheduler, so GitHub Actions plays
+# cron: every morning it POSTs /api/horoscope, which reads each
+# subscriber's stored sign and sends them their reading. Reuses
+# BROADCAST_SECRET (same trust boundary as the motivation broadcast).
+# Requires two GitHub repo secrets
+# (Settings -> Secrets and variables -> Actions):
+#
+#   PA_HOROSCOPE_URL   e.g. https://<your-pa-username>.pythonanywhere.com/api/horoscope
+#   BROADCAST_SECRET   must match BROADCAST_SECRET in PA's .env
+#
+# Skips with a warning if either secret is missing, so this is optional.
+
+on:
+  schedule:
+    # 05:00 UTC = 09:00 in UTC+4 (Armenia). Staggered an hour after the
+    # motivation broadcast so the two don't fire at the same instant.
+    # cron here is ALWAYS UTC — change it to hit your own morning.
+    - cron: '0 5 * * *'
+  workflow_dispatch:  # manual "send it now" button in the Actions tab
+
+concurrency:
+  group: horoscope
+  cancel-in-progress: false
+
+jobs:
+  horoscope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily horoscope
+        env:
+          PA_HOROSCOPE_URL: ${{ secrets.PA_HOROSCOPE_URL }}
+          BROADCAST_SECRET: ${{ secrets.BROADCAST_SECRET }}
+        run: |
+          if [ -z "$PA_HOROSCOPE_URL" ] || [ -z "$BROADCAST_SECRET" ]; then
+            echo "::warning::PA_HOROSCOPE_URL or BROADCAST_SECRET not set in repo secrets; skipping horoscope."
+            exit 0
+          fi
+          # --retry rides out PA's transient outbound-proxy blips. Safe:
+          # /api/horoscope only 500s when generation fails, which is
+          # BEFORE any message is sent, so a retry can't double-send.
+          curl -fsS -X POST \
+            -H "X-Broadcast-Secret: $BROADCAST_SECRET" \
+            --max-time 120 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
+            "$PA_HOROSCOPE_URL"

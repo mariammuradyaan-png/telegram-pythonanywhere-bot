@@ -140,6 +140,18 @@ MOTIVATION_PROMPT = os.environ.get(
     "your voice with a little sparkle. Don't ask a question; just send the "
     "warmth so it's the first nice thing they read today.",
 ).strip()
+# Daily horoscope. Users opt in with /horoscope <sign|birthday> (their
+# sign is captured once at registration). /api/horoscope — reusing
+# BROADCAST_SECRET — generates one reading per distinct subscribed sign
+# and sends each user theirs. The literal "{sign}" is replaced with the
+# subscriber's sign; override to change the reading's flavour.
+HOROSCOPE_PROMPT = os.environ.get(
+    "HOROSCOPE_PROMPT",
+    "Write today's horoscope for a {sign}. Two or three short sentences — "
+    "warm, positive and a little playful, fully in your voice with a "
+    "sparkle. Speak straight to them about the day ahead; don't ask a "
+    "question and don't mention being an AI.",
+).strip()
 
 # App
 SYSTEM_PROMPT = (

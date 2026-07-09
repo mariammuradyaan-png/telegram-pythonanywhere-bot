@@ -246,6 +246,97 @@ def test_cmd_unsubscribe_opts_user_out():
         assert mock_bot.send_message.called
 
 
+# ── /horoscope ──────────────────────────────────────────────────────────────────
+
+
+def test_cmd_horoscope_registers_with_sign_and_sends_today():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.horoscope.parse_sign", return_value="leo") as mock_parse,
+        patch("bot.horoscope.subscribe", return_value=True) as mock_sub,
+        patch("bot.handlers._send_todays_horoscope") as mock_today,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope leo"))
+        mock_parse.assert_called_once_with("leo")
+        mock_sub.assert_called_once_with(123, 456, "leo")
+        mock_today.assert_called_once()  # first reading delivered immediately
+        assert "Leo" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_horoscope_asks_once_when_unregistered_and_no_arg():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.horoscope.get_subscriber", return_value=None),
+        patch("bot.handlers._send_todays_horoscope") as mock_today,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope"))
+        mock_today.assert_not_called()
+        assert "birthday" in mock_bot.send_message.call_args[0][1].lower()
+
+
+def test_cmd_horoscope_registered_no_arg_reads_without_reasking():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch(
+            "bot.horoscope.get_subscriber",
+            return_value={"chat_id": 456, "sign": "leo"},
+        ),
+        patch("bot.handlers._send_todays_horoscope") as mock_today,
+        patch("bot.handlers.bot"),
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope"))
+        mock_today.assert_called_once()
+        assert mock_today.call_args[0][1] == "leo"  # uses stored sign
+
+
+def test_cmd_horoscope_stop_unsubscribes():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.horoscope.unsubscribe", return_value=True) as mock_unsub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope stop"))
+        mock_unsub.assert_called_once_with(123)
+        assert mock_bot.send_message.called
+
+
+def test_cmd_horoscope_rejects_unparseable_sign():
+    with (
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.horoscope.parse_sign", return_value=None),
+        patch("bot.horoscope.subscribe") as mock_sub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope banana"))
+        mock_sub.assert_not_called()
+        assert "couldn't read" in mock_bot.send_message.call_args[0][1].lower()
+
+
+def test_cmd_horoscope_stateless_explains():
+    with (
+        patch("bot.handlers.store", None),
+        patch("bot.horoscope.subscribe") as mock_sub,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_horoscope
+
+        cmd_horoscope(make_message(text="/horoscope leo"))
+        mock_sub.assert_not_called()
+        mock_bot.send_message.assert_called_once()
+
+
 # ── /imagine ──────────────────────────────────────────────────────────────────
 
 

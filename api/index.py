@@ -273,6 +273,40 @@ def broadcast():
     return body + "\n", 200
 
 
+@app.route("/api/horoscope", methods=["POST"])
+def horoscope():
+    """Send every subscriber their sign's daily horoscope.
+
+    Triggered by the GitHub Actions cron in .github/workflows/horoscope.yml
+    (PA free tier has no scheduler). Reuses BROADCAST_SECRET / the
+    X-Broadcast-Secret header — same trust boundary as /api/broadcast —
+    and is fail-closed (403 when the secret is unset).
+    """
+    from bot.config import BROADCAST_SECRET
+
+    if not BROADCAST_SECRET:
+        return "Horoscope endpoint disabled (BROADCAST_SECRET unset)", 403
+
+    provided = request.headers.get("X-Broadcast-Secret", "")
+    if not hmac.compare_digest(provided, BROADCAST_SECRET):
+        return "Forbidden", 403
+
+    from bot.horoscope import broadcast_horoscopes
+
+    try:
+        result = broadcast_horoscopes()
+    except Exception as e:
+        # Generation failures happen before any send, so retries are safe.
+        print(f"Horoscope broadcast failed: {e}")
+        return "Horoscope broadcast failed (see server log for details)", 500
+
+    body = (
+        f"OK sent={result['sent']} failed={result['failed']} "
+        f"removed={result['removed']} total={result['total']}"
+    )
+    return body + "\n", 200
+
+
 @app.route("/api/deploy", methods=["POST"])
 def deploy():
     """Auto-deploy webhook. Converges the checkout to origin's tip and

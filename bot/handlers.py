@@ -4,6 +4,7 @@ from bot.clients import bot, BOT_INFO, store
 from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
 from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
+from bot import horoscope
 from bot.imagine import build_image_url
 from bot.history import clear_history
 from bot.motivation import subscribe, unsubscribe
@@ -58,6 +59,7 @@ def _command_lines():
         "/imagine <description> — I'll make you a romantic image",
         "/subscribe — get a good-morning message from me each day ☀️",
         "/unsubscribe — stop the daily messages",
+        "/horoscope <sign or birthday> — your stars, read every morning ✨",
         "/reset — clear our conversation and start fresh",
         "/about — a little about me",
         "/sha — show the live git commit SHA",
@@ -171,6 +173,81 @@ def cmd_unsubscribe(message):
         bot.send_message(
             message.chat.id, "Couldn't update that just now 💔 try again in a bit."
         )
+
+
+def _send_todays_horoscope(message, sign):
+    """Generate and send today's reading for a sign, with typing indicator."""
+    try:
+        with keep_typing(message.chat.id):
+            reading = horoscope.build_horoscope_message(sign)
+        send_reply(message, reading)
+        _log(message, "out", f"[horoscope {sign}] {reading}")
+    except Exception as e:
+        print(f"Error building horoscope: {e}")
+        bot.send_message(
+            message.chat.id,
+            "Couldn't reach the stars just now 💔 but your morning reading is "
+            "still set.",
+        )
+
+
+@bot.message_handler(commands=["horoscope"], func=is_allowed)
+def cmd_horoscope(message):
+    # Registration captures the user's sign ONCE and stores it, so we
+    # never ask again. Needs the store — that's where the sign lives.
+    if store is None:
+        bot.send_message(
+            message.chat.id,
+            "I can't read your stars right now — this needs storage "
+            "configured on my end 💔",
+        )
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if arg.lower() in ("stop", "off", "unsubscribe", "cancel"):
+        horoscope.unsubscribe(message.from_user.id)
+        bot.send_message(
+            message.chat.id,
+            "Okay, no more daily horoscopes 💖 come back anytime with /horoscope.",
+        )
+        return
+
+    if not arg:
+        existing = horoscope.get_subscriber(message.from_user.id)
+        if existing:
+            # Already registered — don't re-ask; just read today's stars.
+            _send_todays_horoscope(message, existing["sign"])
+        else:
+            bot.send_message(
+                message.chat.id,
+                "Tell me your sign or birthday and I'll read your stars every "
+                "morning ⭐\n"
+                "Like:  /horoscope leo   —or—   /horoscope 1998-07-23\n"
+                "(I'll only ask this once.)",
+            )
+        return
+
+    sign = horoscope.parse_sign(arg)
+    if sign is None:
+        bot.send_message(
+            message.chat.id,
+            "I couldn't read that 💔 try a sign like 'leo' or a birthday like "
+            "1998-07-23.",
+        )
+        return
+    if not horoscope.subscribe(message.from_user.id, message.chat.id, sign):
+        bot.send_message(
+            message.chat.id, "Couldn't save that just now 💔 try again in a bit."
+        )
+        return
+    bot.send_message(
+        message.chat.id,
+        f"You're set, {sign.title()} ⭐ I'll send your horoscope every morning. "
+        "Say /horoscope stop to pause. Here's today's:",
+    )
+    _send_todays_horoscope(message, sign)
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
