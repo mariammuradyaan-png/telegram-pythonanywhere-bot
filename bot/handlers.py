@@ -78,6 +78,7 @@ def cmd_start(message):
     )
     bot.send_message(message.chat.id, intro)
 
+
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
     # Routes through ask_ai so the joke comes out in Mariam's voice (the
