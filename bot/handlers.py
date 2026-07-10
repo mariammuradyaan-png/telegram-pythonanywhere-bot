@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from bot.clients import bot, BOT_INFO, store
-from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
+from bot.config import HF_SPACE_ID, RATE_LIMIT
 from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot import horoscope
@@ -62,7 +62,6 @@ def _command_lines():
         "/horoscope <sign or birthday> — your stars, read every morning ✨",
         "/reset — clear our conversation and start fresh",
         "/about — a little about me",
-        "/sha — show the live git commit SHA",
     ]
     if HF_SPACE_ID:
         lines.append("/model — switch AI provider")
@@ -259,26 +258,21 @@ def cmd_reset(message):
 
 @bot.message_handler(commands=["about"], func=is_allowed)
 def cmd_about(message):
-    if HF_SPACE_ID:
-        provider = get_provider(message.from_user.id)
-        model_line = f"{MODEL} (main)" if provider == "main" else f"{HF_SPACE_ID} (hf)"
-    else:
-        model_line = MODEL
-    storage_line = "SQLite" if store is not None else "stateless (no memory)"
-    lines = [
-        f"Model  : {model_line}",
-        f"Storage: {storage_line}",
-        f"Hosting: {HOSTING_LABEL}",
-    ]
-    if COMMIT_SHA:
-        lines.append(f"Version: {COMMIT_SHA}")
-    bot.send_message(message.chat.id, "\n".join(lines))
-
-
-@bot.message_handler(commands=["sha"], func=is_allowed)
-def cmd_sha(message):
-    sha = COMMIT_SHA or "unknown"
-    bot.send_message(message.chat.id, f"Live SHA: {sha}")
+    # Routes through ask_ai (like /joke) so Mariam introduces herself in her
+    # own voice — the system prompt carries who she is — instead of dumping
+    # the technical model/storage/hosting details.
+    prompt = (
+        "Introduce yourself warmly — who you are, what you love, "
+        "what you're like. A few sentences in your own voice."
+    )
+    try:
+        with keep_typing(message.chat.id):
+            reply = ask_ai(message.from_user.id, prompt)
+        send_reply(message, reply)
+        _log(message, "out", reply)
+    except Exception as e:
+        print(f"Error in cmd_about: {e}")
+        bot.send_message(message.chat.id, "Something went wrong. Please try again.")
 
 
 if HF_SPACE_ID:

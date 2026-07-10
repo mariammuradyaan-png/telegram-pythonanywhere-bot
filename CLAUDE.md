@@ -89,7 +89,6 @@ telegram-pythonanywhere-bot/
 | `WEBHOOK_URL` | No | — | When set, the bot auto-registers this URL as the Telegram webhook on every worker boot and after every `/api/deploy`. No manual `setWebhook` step needed. Idempotent. On PA, value is `https://<your-pa-username>.pythonanywhere.com/api/webhook`. Leave unset for local polling |
 | `RATE_LIMIT` | No | `250` | Max messages per user per day |
 | `ALLOWED_USERS` | No | _open_ | Comma-separated whitelist of usernames (with/without `@`) or numeric user IDs. Empty = everyone allowed. Non-empty = silent drop for non-whitelisted (no rejection reply, no leak of bot existence). Implemented as `func=is_allowed` on every `@bot.message_handler` so telebot never dispatches the handler |
-| `HOSTING_LABEL` | No | `PythonAnywhere` | Label shown by the `/about` command |
 | `IMAGINE_STYLE` | No | _romantic preset_ | Style descriptors appended to every `/imagine` prompt (see `bot/config.py`). Change to alter the house look |
 | `IMAGINE_BASE_URL` | No | `https://image.pollinations.ai/prompt` | Text-to-image endpoint for `/imagine`. Any service whose `/<prompt>?...` URL returns an image works. Keyless by default (Pollinations) |
 | `IMAGINE_MODEL` | No | `flux` | Model passed to the image endpoint |

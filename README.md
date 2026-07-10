@@ -376,7 +376,6 @@ Reload (or push) for the change to take effect: the list is read at worker boot.
 | Daily message limit | Set `RATE_LIMIT` env var (default `250`) |
 | Add a second provider | Set `HF_SPACE_ID` (and optionally `HF_TOKEN`) — enables `/model` command |
 | Conversation memory length | Edit `MAX_HISTORY` in `bot/config.py` |
-| Hosting label shown by `/about` | Set `HOSTING_LABEL` env var |
 | Add a new command | Add a handler in `bot/handlers.py` |
 
 ---
@@ -447,8 +446,7 @@ make deploy-pa  # one-command PythonAnywhere deploy (see "Fast path" in Part 2)
 | `/start` | Welcome message |
 | `/help` | List all commands |
 | `/reset` | Clear your conversation history |
-| `/about` | Show model, storage, and hosting info |
-| `/sha` | Show the live git commit SHA |
+| `/about` | Mariam introduces herself in her own voice |
 | `/model` | Switch AI provider (only available when `HF_SPACE_ID` is set) |
 
 ---

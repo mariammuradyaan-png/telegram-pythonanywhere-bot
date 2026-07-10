@@ -95,10 +95,6 @@ DEFAULT_PROVIDER = "main"
 # None` at the top of every function and return safe defaults).
 SQLITE_PATH = os.environ.get("SQLITE_PATH", "").strip()
 
-# Label shown by the /about command. Defaults to "PythonAnywhere" since
-# that is the documented deployment target. Override to suit your host.
-HOSTING_LABEL = os.environ.get("HOSTING_LABEL", "PythonAnywhere").strip()
-
 # /imagine — text-to-image via Pollinations (https://pollinations.ai).
 # No API key required. The bot only *builds* an image URL and hands it to
 # Telegram's sendPhoto; Telegram's own servers fetch the image, so PA's

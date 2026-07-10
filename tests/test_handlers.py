@@ -389,93 +389,42 @@ def test_cmd_imagine_falls_back_to_link_on_send_failure():
 # ── /about ────────────────────────────────────────────────────────────────────
 
 
-def test_cmd_about_with_sqlite():
-    """When SQLite is configured, /about should reference SQLite."""
+def test_cmd_about_routes_through_ask_ai():
+    """/about should introduce Mariam via ask_ai (so the persona system
+    prompt is applied) and reply through send_reply — not dump technical
+    model/storage/hosting details."""
     with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.ask_ai", return_value="Hi, I'm Mariam 💖") as mock_ask,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.bot"),
     ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
         from bot.handlers import cmd_about
 
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "SQLite" in sent
-        assert "stateless" not in sent
+        msg = make_message(text="/about")
+        cmd_about(msg)
+        assert mock_ask.call_args[0][0] == 123
+        mock_send.assert_called_once_with(msg, "Hi, I'm Mariam 💖")
+        mock_keep.assert_called_once_with(456)
 
 
-def test_cmd_about_includes_commit_sha_when_set():
-    """When COMMIT_SHA is populated (worker booted inside a git repo),
-    /about exposes a Version line so users can validate which commit is
-    live."""
+def test_cmd_about_sends_generic_error_on_failure():
+    """A failed generation must not leak the exception to the user."""
     with (
+        patch("bot.handlers.ask_ai", side_effect=Exception("API key invalid")),
+        patch("bot.handlers.keep_typing") as mock_keep,
         patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-        patch("bot.handlers.COMMIT_SHA", "abc1234"),
     ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
         from bot.handlers import cmd_about
 
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "Version: abc1234" in sent
-
-
-def test_cmd_about_omits_version_line_when_sha_unknown():
-    """If git rev-parse failed at boot, the Version line is dropped
-    entirely rather than showing 'unknown' — clearer for the user."""
-    with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-        patch("bot.handlers.COMMIT_SHA", ""),
-    ):
-        from bot.handlers import cmd_about
-
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "Version" not in sent
-
-
-def test_cmd_about_without_store():
-    """When no backend is configured, /about must say stateless. Regression
-    guard for the NameError that occurred when `store` was missing from
-    bot.handlers' imports."""
-    with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", None),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-    ):
-        from bot.handlers import cmd_about
-
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "stateless" in sent
-
-
-# ── /sha ─────────────────────────────────────────────────────────────────────
-
-
-def test_cmd_sha_reports_live_commit_sha():
-    with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.COMMIT_SHA", "abc1234"),
-    ):
-        from bot.handlers import cmd_sha
-
-        cmd_sha(make_message())
-        mock_bot.send_message.assert_called_once_with(456, "Live SHA: abc1234")
-
-
-def test_cmd_sha_reports_unknown_when_git_sha_unavailable():
-    with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.COMMIT_SHA", ""),
-    ):
-        from bot.handlers import cmd_sha
-
-        cmd_sha(make_message())
-        mock_bot.send_message.assert_called_once_with(456, "Live SHA: unknown")
+        cmd_about(make_message(text="/about"))
+        error_msg = mock_bot.send_message.call_args[0][1]
+        assert "Something went wrong" in error_msg
+        assert "API key" not in error_msg
 
 
 # ── /model command ────────────────────────────────────────────────────────────

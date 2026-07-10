@@ -44,7 +44,7 @@ Here's a complete example of adding a ping command that responds with the bot's 
 import time
 from datetime import datetime
 from bot.clients import bot
-from bot.config import COMMIT_SHA, HOSTING_LABEL
+from bot.config import COMMIT_SHA
 from bot.helpers import is_allowed
 
 # Store bot start time
@@ -58,8 +58,7 @@ def cmd_ping(message):
         message.chat.id,
         f"Pong! 🏓\n\n"
         f"Uptime: {uptime_hours:.1f} hours\n"
-        f"Version: {COMMIT_SHA if COMMIT_SHA else 'unknown'}\n"
-        f"Hosting: {HOSTING_LABEL}"
+        f"Version: {COMMIT_SHA if COMMIT_SHA else 'unknown'}"
     )
 
 @bot.message_handler(commands=["help"], func=is_allowed)
